@@ -1,9 +1,9 @@
 using System.IO;
 using System.IO.Compression;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
-using Soenneker.Compression.Tar.Abstract;
 using Soenneker.GitHub.Repositories.Releases.Abstract;
 using Soenneker.Libvips.Runners.Windows.Utils.Abstract;
 using Soenneker.Utils.Directory.Abstract;
@@ -13,67 +13,57 @@ namespace Soenneker.Libvips.Runners.Windows.Utils;
 /// <inheritdoc cref="IFileOperationsUtil"/>
 public sealed class FileOperationsUtil : IFileOperationsUtil
 {
-    private const string Owner = "kleisauke";
-    private const string Repository = "libvips-packaging";
-    private const string AssetPattern = "win-x64.tar.gz";
-    private const string NativeFileName = "libvips-42.dll";
+    private const string Owner = "libvips";
+    private const string Repository = "build-win64-mxe";
 
     private readonly ILogger<FileOperationsUtil> _logger;
     private readonly IDirectoryUtil _directoryUtil;
     private readonly IGitHubRepositoriesReleasesUtil _releasesUtil;
-    private readonly ITarUtil _tarUtil;
 
     public FileOperationsUtil(ILogger<FileOperationsUtil> logger, IDirectoryUtil directoryUtil,
-        IGitHubRepositoriesReleasesUtil releasesUtil, ITarUtil tarUtil)
+        IGitHubRepositoriesReleasesUtil releasesUtil)
     {
         _logger = logger;
         _directoryUtil = directoryUtil;
         _releasesUtil = releasesUtil;
-        _tarUtil = tarUtil;
     }
 
     public async ValueTask<string> Process(CancellationToken cancellationToken = default)
     {
         string downloadDirectory = await _directoryUtil.CreateTempDirectory(cancellationToken);
-        string? asset = await _releasesUtil.DownloadReleaseAssetByNamePattern(Owner, Repository, downloadDirectory, [AssetPattern], cancellationToken);
+        string? asset = await _releasesUtil.DownloadReleaseAssetByNamePattern(Owner, Repository, downloadDirectory,
+            ["vips-dev-x64-web-", ".zip"], cancellationToken);
 
         if (asset is null)
-            throw new FileNotFoundException($"Could not find a stable {Repository} release asset matching '{AssetPattern}'.");
-
-        string tarFile = Path.Combine(downloadDirectory, Path.GetFileNameWithoutExtension(asset));
-        await DecompressGzip(asset, tarFile, cancellationToken);
+            throw new FileNotFoundException($"Could not find a stable x64 web distribution in the latest {Repository} release.");
 
         string extractionDirectory = await _directoryUtil.CreateTempDirectory(cancellationToken);
-        await _tarUtil.Extract(tarFile, extractionDirectory, cancellationToken);
+        ZipFile.ExtractToDirectory(asset, extractionDirectory);
+
+        string distributionDirectory = Directory.EnumerateDirectories(extractionDirectory, "vips-dev-*", SearchOption.TopDirectoryOnly)
+                                                .Single();
 
         string stageDirectory = await _directoryUtil.CreateTempDirectory(cancellationToken);
-        CopyRequiredFile(extractionDirectory, stageDirectory, Path.Combine("lib", NativeFileName));
-        CopyRequiredFile(extractionDirectory, stageDirectory, "THIRD-PARTY-NOTICES.md");
-        CopyRequiredFile(extractionDirectory, stageDirectory, "versions.json");
+        CopyDirectory(distributionDirectory, stageDirectory);
+
+        string executable = Path.Combine(stageDirectory, "bin", "vips.exe");
+        if (!File.Exists(executable))
+            throw new FileNotFoundException("The libvips distribution did not contain bin/vips.exe.", executable);
 
         _logger.LogInformation("Prepared Windows x64 libvips runtime at {StageDirectory}", stageDirectory);
         return stageDirectory;
     }
 
-    private static async ValueTask DecompressGzip(string source, string destination, CancellationToken cancellationToken)
+    private static void CopyDirectory(string sourceRoot, string destinationRoot)
     {
-        await using var sourceStream = new FileStream(source, FileMode.Open, FileAccess.Read, FileShare.Read, 81920,
-            FileOptions.Asynchronous | FileOptions.SequentialScan);
-        await using var gzipStream = new GZipStream(sourceStream, CompressionMode.Decompress);
-        await using var destinationStream = new FileStream(destination, FileMode.Create, FileAccess.Write, FileShare.None, 81920,
-            FileOptions.Asynchronous | FileOptions.SequentialScan);
+        foreach (string directory in Directory.EnumerateDirectories(sourceRoot, "*", SearchOption.AllDirectories))
+            Directory.CreateDirectory(Path.Combine(destinationRoot, Path.GetRelativePath(sourceRoot, directory)));
 
-        await gzipStream.CopyToAsync(destinationStream, cancellationToken);
-    }
-
-    private static void CopyRequiredFile(string sourceRoot, string destinationRoot, string relativePath)
-    {
-        string source = Path.Combine(sourceRoot, relativePath);
-        if (!File.Exists(source))
-            throw new FileNotFoundException($"Expected libvips release file was not found: {relativePath}", source);
-
-        string destination = Path.Combine(destinationRoot, relativePath);
-        Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
-        File.Copy(source, destination, true);
+        foreach (string file in Directory.EnumerateFiles(sourceRoot, "*", SearchOption.AllDirectories))
+        {
+            string destination = Path.Combine(destinationRoot, Path.GetRelativePath(sourceRoot, file));
+            Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+            File.Copy(file, destination, true);
+        }
     }
 }

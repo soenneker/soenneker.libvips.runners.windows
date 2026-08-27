@@ -1,5 +1,4 @@
 using Microsoft.Extensions.DependencyInjection;
-using Soenneker.Compression.Tar.Registrars;
 using Soenneker.GitHub.Repositories.Releases.Registrars;
 using Soenneker.Libvips.Runners.Windows.Utils;
 using Soenneker.Libvips.Runners.Windows.Utils.Abstract;
@@ -15,7 +14,6 @@ public static class Startup
         services.AddHostedService<ConsoleHostedService>()
             .AddSingleton<IFileOperationsUtil, FileOperationsUtil>()
             .AddDirectoryUtilAsSingleton()
-            .AddTarUtilAsSingleton()
             .AddGitHubRepositoriesReleasesUtilAsSingleton()
             .AddRunnersManagerAsSingleton();
     }
