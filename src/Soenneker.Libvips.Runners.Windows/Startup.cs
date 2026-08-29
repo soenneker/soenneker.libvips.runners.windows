@@ -4,11 +4,14 @@ using Soenneker.Libvips.Runners.Windows.Utils;
 using Soenneker.Libvips.Runners.Windows.Utils.Abstract;
 using Soenneker.Managers.Runners.Registrars;
 using Soenneker.Utils.Directory.Registrars;
-
 namespace Soenneker.Libvips.Runners.Windows;
 
 public static class Startup
 {
+    /// <summary>
+    /// Registers the services required by the application host.
+    /// </summary>
+    /// <param name="services">Service collection that receives the registration.</param>
     public static void ConfigureServices(IServiceCollection services)
     {
         services.AddHostedService<ConsoleHostedService>()
