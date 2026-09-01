@@ -1,3 +1,4 @@
+using System;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
@@ -7,6 +8,7 @@ using Microsoft.Extensions.Logging;
 using Soenneker.GitHub.Repositories.Releases.Abstract;
 using Soenneker.Libvips.Runners.Windows.Utils.Abstract;
 using Soenneker.Utils.Directory.Abstract;
+using Soenneker.Utils.File.Abstract;
 
 namespace Soenneker.Libvips.Runners.Windows.Utils;
 
@@ -19,13 +21,15 @@ public sealed class FileOperationsUtil : IFileOperationsUtil
     private readonly ILogger<FileOperationsUtil> _logger;
     private readonly IDirectoryUtil _directoryUtil;
     private readonly IGitHubRepositoriesReleasesUtil _releasesUtil;
+    private readonly IFileUtil _fileUtil;
 
     public FileOperationsUtil(ILogger<FileOperationsUtil> logger, IDirectoryUtil directoryUtil,
-        IGitHubRepositoriesReleasesUtil releasesUtil)
+        IGitHubRepositoriesReleasesUtil releasesUtil, IFileUtil fileUtil)
     {
         _logger = logger;
         _directoryUtil = directoryUtil;
         _releasesUtil = releasesUtil;
+        _fileUtil = fileUtil;
     }
 
     public async ValueTask<string> Process(CancellationToken cancellationToken = default)
@@ -40,30 +44,18 @@ public sealed class FileOperationsUtil : IFileOperationsUtil
         string extractionDirectory = await _directoryUtil.CreateTempDirectory(cancellationToken);
         ZipFile.ExtractToDirectory(asset, extractionDirectory);
 
-        string distributionDirectory = Directory.EnumerateDirectories(extractionDirectory, "vips-dev-*", SearchOption.TopDirectoryOnly)
-                                                .Single();
+        string distributionDirectory = (await _directoryUtil.GetAllDirectories(extractionDirectory, cancellationToken))
+                                       .Single(path => Path.GetFileName(path).StartsWith("vips-dev-", StringComparison.Ordinal));
 
         string stageDirectory = await _directoryUtil.CreateTempDirectory(cancellationToken);
-        CopyDirectory(distributionDirectory, stageDirectory);
+        await _directoryUtil.CopyDirectory(distributionDirectory, stageDirectory, cancellationToken: cancellationToken);
 
         string executable = Path.Combine(stageDirectory, "bin", "vips.exe");
-        if (!File.Exists(executable))
+        if (!await _fileUtil.Exists(executable, cancellationToken))
             throw new FileNotFoundException("The libvips distribution did not contain bin/vips.exe.", executable);
 
         _logger.LogInformation("Prepared Windows x64 libvips runtime at {StageDirectory}", stageDirectory);
         return stageDirectory;
     }
 
-    private static void CopyDirectory(string sourceRoot, string destinationRoot)
-    {
-        foreach (string directory in Directory.EnumerateDirectories(sourceRoot, "*", SearchOption.AllDirectories))
-            Directory.CreateDirectory(Path.Combine(destinationRoot, Path.GetRelativePath(sourceRoot, directory)));
-
-        foreach (string file in Directory.EnumerateFiles(sourceRoot, "*", SearchOption.AllDirectories))
-        {
-            string destination = Path.Combine(destinationRoot, Path.GetRelativePath(sourceRoot, file));
-            Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
-            File.Copy(file, destination, true);
-        }
-    }
 }
