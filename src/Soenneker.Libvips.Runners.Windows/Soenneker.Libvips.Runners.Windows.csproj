@@ -27,7 +27,7 @@
         <PackageReference Include="Soenneker.GitHub.Repositories.Releases" Version="4.0.976" />
         <PackageReference Include="Soenneker.Managers.Runners" Version="4.0.2420" />
         <PackageReference Include="Soenneker.Utils.Directory" Version="4.0.915" />
-        <PackageReference Include="Soenneker.Utils.File" Version="4.0.2245" />
+        <PackageReference Include="Soenneker.Utils.File" Version="4.0.2246" />
         <PackageReference Include="Soenneker.Utils.File.Download" Version="4.0.1711" />
     </ItemGroup>
 </Project>
