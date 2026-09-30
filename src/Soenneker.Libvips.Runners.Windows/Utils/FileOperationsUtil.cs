@@ -12,9 +12,9 @@ using Soenneker.Utils.File.Abstract;
 
 namespace Soenneker.Libvips.Runners.Windows.Utils;
 
-/// <inheritdoc cref="IFileOperationsUtil"/>
 public sealed class FileOperationsUtil : IFileOperationsUtil
 {
+
     private const string Owner = "libvips";
     private const string Repository = "build-win64-mxe";
 
@@ -55,6 +55,7 @@ public sealed class FileOperationsUtil : IFileOperationsUtil
             throw new FileNotFoundException("The libvips distribution did not contain bin/vips.exe.", executable);
 
         _logger.LogInformation("Prepared Windows x64 libvips runtime at {StageDirectory}", stageDirectory);
+        await File.WriteAllTextAsync(Path.Combine(stageDirectory, "VERSION.txt"), System.Text.RegularExpressions.Regex.Match(Path.GetFileName(asset), @"\d+\.\d+\.\d+(?:\.\d+)?").Value, cancellationToken);
         return stageDirectory;
     }
 
